@@ -8,24 +8,57 @@ variables:
   buildConfiguration: 'Release'
 
 stages:
+# ======================
+#        BUILD
+# ======================
 - stage: Build
+  displayName: "Build Stage"
   jobs:
-  - job: Build
+  - job: BuildJob
+    displayName: "Build .NET App"
     steps:
-    - script: dotnet build --configuration $(buildConfiguration)
-      displayName: 'dotnet build $(buildConfiguration)'
+    - task: UseDotNet@2
+      displayName: "Install .NET SDK"
+      inputs:
+        packageType: sdk
+        version: 8.x
 
+    - script: dotnet restore
+      displayName: "Restore packages"
+
+    - script: dotnet build --configuration $(buildConfiguration)
+      displayName: "Build project"
+
+    - script: dotnet publish --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)
+      displayName: "Publish output"
+
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish artifacts"
+      inputs:
+        PathtoPublish: "$(Build.ArtifactStagingDirectory)"
+        ArtifactName: "drop"
+
+# ======================
+#        DEPLOY
+# ======================
 - stage: Deploy
+  displayName: "Deploy Stage"
+  dependsOn: Build
   jobs:
-  - deployment: Deploy
-    environment: 'production'
+  - deployment: DeployToWebApp
+    displayName: "Deploy to mywebapp2525"
+    environment: "production"
     strategy:
       runOnce:
         deploy:
           steps:
+          - download: current
+            artifact: drop
+
           - task: AzureWebApp@1
+            displayName: "Deploy Web App"
             inputs:
-              azureSubscription: 'mydemo'
-              appType: 'webApp'          # required field
-              appName: 'mywebapp2525'
-              package: '$(System.DefaultWorkingDirectory)'
+              azureSubscription: "mydemo"
+              appType: "webApp"
+              appName: "mywebapp2525"
+              package: "$(Pipeline.Workspace)/drop"
